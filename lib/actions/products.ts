@@ -1,0 +1,362 @@
+"use server";
+
+import { db, products, cards, categories } from "@/lib/db";
+import { eq, and, desc, asc, sql, ilike, or, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import {
+  createProductSchema,
+  updateProductSchema,
+  type CreateProductInput,
+  type UpdateProductInput,
+} from "@/lib/validations/product";
+
+/**
+ * 获取商品列表（前台）
+ */
+export async function getActiveProducts(options?: {
+  categoryId?: string;
+  featured?: boolean;
+  limit?: number;
+  offset?: number;
+  search?: string;
+}) {
+  const { categoryId, featured, limit = 20, offset = 0, search } = options || {};
+
+  const conditions = [eq(products.isActive, true)];
+
+  if (categoryId) {
+    conditions.push(eq(products.categoryId, categoryId));
+  }
+
+  if (featured) {
+    conditions.push(eq(products.isFeatured, true));
+  }
+
+  if (search) {
+    conditions.push(
+      or(
+        ilike(products.name, `%${search}%`),
+        ilike(products.description, `%${search}%`)
+      )!
+    );
+  }
+
+  const productList = await db.query.products.findMany({
+    where: and(...conditions),
+    with: {
+      category: {
+        columns: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+    },
+    orderBy: [desc(products.isFeatured), asc(products.sortOrder), desc(products.createdAt)],
+    limit,
+    offset,
+  });
+
+  // 如果没有商品，直接返回空数组
+  if (productList.length === 0) {
+    return [];
+  }
+
+  // 获取每个商品的库存数量
+  const productIds = productList.map((p) => p.id);
+  const stockCounts = await db
+    .select({
+      productId: cards.productId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(cards)
+    .where(
+      and(
+        inArray(cards.productId, productIds),
+        eq(cards.status, "available")
+      )
+    )
+    .groupBy(cards.productId);
+
+  const stockMap = new Map(stockCounts.map((s) => [s.productId, s.count]));
+
+  return productList.map((product) => ({
+    ...product,
+    stock: stockMap.get(product.id) || 0,
+  }));
+}
+
+/**
+ * 获取商品详情
+ */
+export async function getProductBySlug(slug: string) {
+  const product = await db.query.products.findFirst({
+    where: and(eq(products.slug, slug), eq(products.isActive, true)),
+    with: {
+      category: true,
+    },
+  });
+
+  if (!product) {
+    return null;
+  }
+
+  // 获取库存数量
+  const [stockCount] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+    })
+    .from(cards)
+    .where(and(eq(cards.productId, product.id), eq(cards.status, "available")));
+
+  return {
+    ...product,
+    stock: stockCount?.count || 0,
+  };
+}
+
+/**
+ * 获取商品详情（通过 ID）
+ */
+export async function getProductById(id: string) {
+  const product = await db.query.products.findFirst({
+    where: eq(products.id, id),
+    with: {
+      category: true,
+    },
+  });
+
+  if (!product) {
+    return null;
+  }
+
+  // 获取库存数量
+  const [stockCount] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+    })
+    .from(cards)
+    .where(and(eq(cards.productId, product.id), eq(cards.status, "available")));
+
+  return {
+    ...product,
+    stock: stockCount?.count || 0,
+  };
+}
+
+/**
+ * 获取所有商品（管理后台）
+ */
+export async function getAllProducts(options?: {
+  limit?: number;
+  offset?: number;
+  search?: string;
+}) {
+  const { limit = 50, offset = 0, search } = options || {};
+
+  const conditions = [];
+  if (search) {
+    conditions.push(
+      or(
+        ilike(products.name, `%${search}%`),
+        ilike(products.description, `%${search}%`)
+      )!
+    );
+  }
+
+  const productList = await db.query.products.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    with: {
+      category: {
+        columns: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: [asc(products.sortOrder), desc(products.createdAt)],
+    limit,
+    offset,
+  });
+
+  // 如果没有商品，直接返回空数组
+  if (productList.length === 0) {
+    return [];
+  }
+
+  // 获取库存统计
+  const productIds = productList.map((p) => p.id);
+  const stockStats = await db
+    .select({
+      productId: cards.productId,
+      status: cards.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(cards)
+    .where(inArray(cards.productId, productIds))
+    .groupBy(cards.productId, cards.status);
+
+  const stockMap = new Map<string, { available: number; sold: number; locked: number }>();
+  for (const stat of stockStats) {
+    const existing = stockMap.get(stat.productId) || { available: 0, sold: 0, locked: 0 };
+    existing[stat.status as keyof typeof existing] = stat.count;
+    stockMap.set(stat.productId, existing);
+  }
+
+  return productList.map((product) => ({
+    ...product,
+    stockStats: stockMap.get(product.id) || { available: 0, sold: 0, locked: 0 },
+  }));
+}
+
+/**
+ * 创建商品
+ */
+export async function createProduct(input: CreateProductInput) {
+  const validationResult = createProductSchema.safeParse(input);
+  if (!validationResult.success) {
+    return {
+      success: false,
+      message: validationResult.error.errors[0].message,
+    };
+  }
+
+  try {
+    const [product] = await db
+      .insert(products)
+      .values({
+        ...validationResult.data,
+        price: validationResult.data.price.toFixed(2),
+        originalPrice: validationResult.data.originalPrice?.toFixed(2),
+      })
+      .returning();
+
+    revalidatePath("/admin/products");
+    revalidatePath("/");
+
+    return { success: true, data: product };
+  } catch (error) {
+    console.error("创建商品失败:", error);
+    // 检查是否是唯一约束冲突
+    if (error instanceof Error && error.message.includes("unique")) {
+      return { success: false, message: "商品URL标识已存在" };
+    }
+    return { success: false, message: "创建商品失败" };
+  }
+}
+
+/**
+ * 更新商品
+ */
+export async function updateProduct(id: string, input: UpdateProductInput) {
+  const validationResult = updateProductSchema.safeParse(input);
+  if (!validationResult.success) {
+    return {
+      success: false,
+      message: validationResult.error.errors[0].message,
+    };
+  }
+
+  try {
+    const updateData: Record<string, unknown> = {
+      ...validationResult.data,
+      updatedAt: new Date(),
+    };
+
+    if (validationResult.data.price !== undefined) {
+      updateData.price = validationResult.data.price.toFixed(2);
+    }
+    if (validationResult.data.originalPrice !== undefined) {
+      updateData.originalPrice = validationResult.data.originalPrice?.toFixed(2);
+    }
+
+    const [product] = await db
+      .update(products)
+      .set(updateData)
+      .where(eq(products.id, id))
+      .returning();
+
+    if (!product) {
+      return { success: false, message: "商品不存在" };
+    }
+
+    revalidatePath("/admin/products");
+    revalidatePath(`/product/${product.slug}`);
+    revalidatePath("/");
+
+    return { success: true, data: product };
+  } catch (error) {
+    console.error("更新商品失败:", error);
+    if (error instanceof Error && error.message.includes("unique")) {
+      return { success: false, message: "商品URL标识已存在" };
+    }
+    return { success: false, message: "更新商品失败" };
+  }
+}
+
+/**
+ * 删除商品
+ */
+export async function deleteProduct(id: string) {
+  try {
+    // 检查是否有未完成的订单
+    const hasActiveOrders = await db.query.orders.findFirst({
+      where: and(
+        eq(products.id, id),
+        or(
+          eq(products.id, "pending"),
+          eq(products.id, "paid")
+        )
+      ),
+    });
+
+    if (hasActiveOrders) {
+      return { success: false, message: "该商品有未完成的订单，无法删除" };
+    }
+
+    await db.delete(products).where(eq(products.id, id));
+
+    revalidatePath("/admin/products");
+    revalidatePath("/");
+
+    return { success: true, message: "商品已删除" };
+  } catch (error) {
+    console.error("删除商品失败:", error);
+    return { success: false, message: "删除商品失败" };
+  }
+}
+
+/**
+ * 切换商品上架状态
+ */
+export async function toggleProductActive(id: string) {
+  try {
+    const product = await db.query.products.findFirst({
+      where: eq(products.id, id),
+    });
+
+    if (!product) {
+      return { success: false, message: "商品不存在" };
+    }
+
+    await db
+      .update(products)
+      .set({
+        isActive: !product.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, id));
+
+    revalidatePath("/admin/products");
+    revalidatePath("/");
+
+    return {
+      success: true,
+      message: product.isActive ? "商品已下架" : "商品已上架",
+    };
+  } catch (error) {
+    console.error("切换商品状态失败:", error);
+    return { success: false, message: "操作失败" };
+  }
+}
+

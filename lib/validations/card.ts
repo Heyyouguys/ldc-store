@@ -1,0 +1,24 @@
+import { z } from "zod";
+
+// 批量导入卡密验证
+export const importCardsSchema = z.object({
+  productId: z.string().uuid("无效的商品ID"),
+  content: z.string().min(1, "卡密内容不能为空"),
+  delimiter: z.enum(["newline", "comma"]).default("newline"),
+});
+
+// 单个卡密操作验证
+export const cardOperationSchema = z.object({
+  cardId: z.string().uuid("无效的卡密ID"),
+});
+
+// 批量卡密操作验证
+export const batchCardOperationSchema = z.object({
+  cardIds: z.array(z.string().uuid()).min(1, "请选择至少一个卡密"),
+  action: z.enum(["delete", "reset"]), // reset: 重置为可用状态
+});
+
+export type ImportCardsInput = z.infer<typeof importCardsSchema>;
+export type CardOperationInput = z.infer<typeof cardOperationSchema>;
+export type BatchCardOperationInput = z.infer<typeof batchCardOperationSchema>;
+
