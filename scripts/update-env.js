@@ -26,6 +26,11 @@ AUTH_TRUST_HOST=true
 # 管理员登录密码
 ADMIN_PASSWORD="your-secure-admin-password"
 
+# 管理员用户名白名单 (可选)
+# 允许通过 Linux DO OAuth 登录后台的用户名列表，逗号分隔
+# 留空则只能使用密码登录后台
+ADMIN_USERNAMES=""
+
 # ============================================
 # Linux DO Credit 支付配置 (必填)
 # ============================================

@@ -6,6 +6,19 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * 获取管理员用户名白名单
+ * 从环境变量 ADMIN_USERNAMES 读取，逗号分隔
+ * 例如: ADMIN_USERNAMES="admin1,admin2,kong"
+ */
+function getAdminUsernames(): string[] {
+  const adminUsernames = process.env.ADMIN_USERNAMES;
+  if (!adminUsernames) {
+    return [];
+  }
+  return adminUsernames.split(",").map((name) => name.trim()).filter(Boolean);
+}
+
 // Linux DO OAuth2 Provider 配置
 // 文档: https://connect.linux.do
 const LinuxDoProvider = {
@@ -116,11 +129,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as { role?: string }).role;
         // 保存 OAuth 用户的额外信息
         if (account?.provider === "linux-do") {
-          token.username = (user as { username?: string }).username;
+          const username = (user as { username?: string }).username;
+          token.username = username;
           token.trustLevel = (user as { trustLevel?: number }).trustLevel;
           token.active = (user as { active?: boolean }).active;
           token.silenced = (user as { silenced?: boolean }).silenced;
           token.provider = "linux-do";
+          
+          // 检查用户名是否在管理员白名单中
+          const adminUsernames = getAdminUsernames();
+          if (username && adminUsernames.includes(username)) {
+            token.role = "admin";
+            console.log("[JWT Callback] OAuth 用户在管理员白名单中:", username);
+          } else {
+            console.log("[JWT Callback] OAuth 用户不在管理员白名单中:", username);
+          }
         }
         
         console.log("[JWT Callback] token:", JSON.stringify(token, null, 2));
