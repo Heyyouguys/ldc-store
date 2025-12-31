@@ -17,10 +17,8 @@ export default async function AdminLayout({
       <AppSidebar />
       <SidebarInset>
         <AdminHeader />
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <div className="min-h-[calc(100vh-theme(spacing.16)-theme(spacing.4))] flex-1 rounded-xl bg-muted/50 p-4 md:p-6">
-            {children}
-          </div>
+        <div className="flex-1 p-4 md:p-6">
+          {children}
         </div>
       </SidebarInset>
       <Toaster position="top-center" richColors />
