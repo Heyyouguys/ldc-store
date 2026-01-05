@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { ChevronLeft } from "lucide-react";
 import { OrderForm } from "./order-form";
 import { renderMarkdownToSafeHtml } from "@/lib/markdown";
+import { ProductImageGallery } from "./product-image-gallery";
 
 // ISR: 每 60 秒重新验证页面缓存
 export const revalidate = 60;
@@ -43,6 +44,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const contentHtml = product.content
     ? renderMarkdownToSafeHtml(product.content)
     : "";
+  const imageUrls = [
+    product.coverImage,
+    ...(product.images ?? []),
+  ].filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+  const uniqueImageUrls = Array.from(new Set(imageUrls));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -54,6 +60,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
         <ChevronLeft className="h-4 w-4" />
         返回首页
       </Link>
+
+      {/* Images */}
+      {uniqueImageUrls.length > 0 && (
+        <ProductImageGallery
+          productName={product.name}
+          images={uniqueImageUrls}
+        />
+      )}
 
       {/* Header */}
       <div className="mb-6">
