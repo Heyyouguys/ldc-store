@@ -2,6 +2,7 @@
 
 import { db, products, cards, categories, orders } from "@/lib/db";
 import { eq, and, desc, asc, sql, ilike, or, inArray } from "drizzle-orm";
+import { releaseExpiredOrders } from "@/lib/actions/orders";
 import { z } from "zod";
 import {
   createProductSchema,
@@ -35,18 +36,7 @@ async function lazyReleaseExpiredOrders() {
   lastExpireCheck = now;
 
   try {
-    // 使用 CTE 一次性处理过期订单
-    await db.execute(sql`
-      WITH expired AS (
-        UPDATE orders
-        SET status = 'expired', updated_at = NOW()
-        WHERE status = 'pending' AND expired_at < NOW()
-        RETURNING id
-      )
-      UPDATE cards
-      SET status = 'available', order_id = NULL, locked_at = NULL
-      WHERE status = 'locked' AND order_id IN (SELECT id FROM expired)
-    `);
+    await releaseExpiredOrders();
   } catch (error) {
     // 静默失败，不影响主流程
     console.error("[lazyReleaseExpiredOrders] 释放过期订单失败:", error);
