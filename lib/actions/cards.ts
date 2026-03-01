@@ -1,6 +1,6 @@
 "use server";
 
-import { db, cards, products } from "@/lib/db";
+import { db, cards, products, type CardStatus } from "@/lib/db";
 import { eq, and, sql, inArray, desc, asc, isNull } from "drizzle-orm";
 import {
   importCardsSchema,
@@ -271,7 +271,7 @@ export async function updateCard(input: UpdateCardInput) {
 export async function getCardsByProduct(
   productId: string,
   options?: {
-    status?: "available" | "locked" | "sold";
+    status?: CardStatus;
     limit?: number;
     offset?: number;
   }
@@ -412,7 +412,7 @@ export async function resetLockedCards(cardIds: string[]) {
  */
 export async function exportCards(
   productId: string,
-  status?: "available" | "sold" | "locked"
+  status?: CardStatus
 ) {
   try {
     await requireAdmin();
@@ -481,5 +481,49 @@ export async function cleanDuplicateCards(productId: string) {
   } catch (error) {
     console.error("清理重复卡密失败:", error);
     return { success: false, message: "清理失败" };
+  }
+}
+
+/**
+ * 重新上架退款卡密（恢复为可售状态）
+ */
+export async function relistRefundedCards(cardIds: string[]) {
+  try {
+    await requireAdmin();
+  } catch {
+    return { success: false, message: "需要管理员权限" };
+  }
+
+  if (cardIds.length === 0) {
+    return { success: false, message: "请选择要重新上架的卡密" };
+  }
+
+  try {
+    const result = await db
+      .update(cards)
+      .set({
+        status: "available",
+        orderId: null,
+        soldAt: null,
+        lockedAt: null,
+      })
+      .where(
+        and(
+          inArray(cards.id, cardIds),
+          eq(cards.status, "refunded")
+        )
+      )
+      .returning({ id: cards.id });
+
+    await revalidateCardCache();
+
+    return {
+      success: true,
+      message: `成功重新上架 ${result.length} 个卡密`,
+      relistCount: result.length,
+    };
+  } catch (error) {
+    console.error("重新上架卡密失败:", error);
+    return { success: false, message: "重新上架卡密失败" };
   }
 }
