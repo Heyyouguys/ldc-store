@@ -87,6 +87,20 @@
 | `ORDER_EXPIRE_MINUTES` | 订单过期时间(分钟) | `5` |
 | `STATS_TIMEZONE` | 统计口径时区（后台“今日销售额”等统计的日界线口径） | `Asia/Shanghai` |
 
+可选变量（后台管理员）：
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `ADMIN_USERNAMES` | Linux DO 管理员用户名白名单（逗号分隔），命中则授予 `admin` 角色 | - |
+
+可选变量（支付与退款）：
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `LDC_GATEWAY` | 支付网关地址（一般无需修改） | `https://credit.linux.do/epay` |
+| `LDC_REFUND_MODE` | 退款模式：`client`/`proxy`/`disabled` | `client` |
+| `LDC_PROXY_URL` | LDC API 代理地址（`proxy` 模式必填，用于绕过 Cloudflare） | - |
+
 ### 步骤 4：部署
 
 点击 **Deploy** 按钮，等待部署完成（约 2-3 分钟）。

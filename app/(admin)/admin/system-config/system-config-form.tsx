@@ -322,7 +322,7 @@ export function SystemConfigForm({ initialValues }: SystemConfigFormProps) {
                       订单与超时
                     </CardTitle>
                     <CardDescription>
-                      用于控制"未支付订单"多久后过期并释放库存
+                      用于控制&ldquo;未支付订单&rdquo;多久后过期并释放库存
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">

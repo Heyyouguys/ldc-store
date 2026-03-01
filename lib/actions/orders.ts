@@ -913,15 +913,12 @@ export async function approveRefund(
       })
       .where(eq(orders.id, orderId));
 
-    // 将卡密状态改回可用（如果需要回收卡密）
-    // 注意：根据业务需求，退款后卡密可能需要标记为已使用或回收
-    // 这里我们将其改回 available 以便重新销售
+    // 退款后将卡密标记为 refunded（保留 orderId、soldAt 用于溯源）
+    // 仅管理员可通过"重新上架"清空关联并改为 available
     await db
       .update(cards)
       .set({
-        status: "available",
-        orderId: null,
-        soldAt: null,
+        status: "refunded",
       })
       .where(eq(cards.orderId, orderId));
 
@@ -1178,13 +1175,12 @@ export async function markOrderRefunded(
       })
       .where(eq(orders.id, orderId));
 
-    // 将卡密状态改回可用
+    // 退款后将卡密标记为 refunded（保留 orderId、soldAt 用于溯源）
+    // 仅管理员可通过"重新上架"清空关联并改为 available
     await db
       .update(cards)
       .set({
-        status: "available",
-        orderId: null,
-        soldAt: null,
+        status: "refunded",
       })
       .where(eq(cards.orderId, orderId));
 

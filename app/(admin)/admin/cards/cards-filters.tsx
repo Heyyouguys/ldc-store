@@ -44,6 +44,7 @@ const cardStatusLabel: Record<CardStatus, string> = {
   available: "可用",
   locked: "锁定",
   sold: "已售",
+  refunded: "退款",
 };
 
 export function CardsFilters({

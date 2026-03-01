@@ -12,7 +12,7 @@ describe("markdown", () => {
 
   it("当 marked.parse 返回非字符串时应安全回退", () => {
     // 为什么这样测：marked.parse 在 async 或异常配置下可能返回非 string；这里确保我们不会把未知对象当 HTML 注入到页面。
-    const spy = vi.spyOn(marked, "parse").mockReturnValue({} as any);
+    const spy = vi.spyOn(marked, "parse").mockReturnValue({} as unknown as string);
     try {
       expect(renderMarkdownToSafeHtml("# hi")).toBe("");
     } finally {
