@@ -24,9 +24,8 @@ import { formatLocalTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 interface OrderResultPageProps {
-  // Next 在不同渲染路径下可能传 Promise 或已解析对象；这里兼容两者，
-  // 避免在测试/边缘运行时因为形态差异导致页面不可用。
-  searchParams: Promise<{ out_trade_no?: string }> | { out_trade_no?: string };
+  // Next.js 期望 searchParams 为 Promise 类型；运行时保留 isThenable 检查以兼容测试传入对象。
+  searchParams?: Promise<{ out_trade_no?: string }>;
 }
 
 interface OrderData {
@@ -106,9 +105,12 @@ function InfoItem({
 }
 
 export default function OrderResultPage({ searchParams }: OrderResultPageProps) {
-  const params = isThenable<{ out_trade_no?: string }>(searchParams) ? use(searchParams) : searchParams;
+  // 兼容 undefined、Promise、纯对象（测试环境）三种情况
+  const resolvedParams = searchParams
+    ? (isThenable<{ out_trade_no?: string }>(searchParams) ? use(searchParams) : searchParams)
+    : {};
   const { data: session, status: sessionStatus } = useSession();
-  const [orderNo, setOrderNo] = useState(params.out_trade_no || "");
+  const [orderNo, setOrderNo] = useState(resolvedParams.out_trade_no || "");
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -128,14 +130,14 @@ export default function OrderResultPage({ searchParams }: OrderResultPageProps) 
 
   // 如果 URL 没有订单号参数，尝试从 localStorage 读取
   useEffect(() => {
-    if (!params.out_trade_no) {
+    if (!resolvedParams.out_trade_no) {
       const savedOrderNo = localStorage.getItem("ldc_last_order_no");
       if (savedOrderNo) {
         setOrderNo(savedOrderNo);
         localStorage.removeItem("ldc_last_order_no");
       }
     }
-  }, [params.out_trade_no]);
+  }, [resolvedParams.out_trade_no]);
 
   // 清理轮询定时器
   useEffect(() => {

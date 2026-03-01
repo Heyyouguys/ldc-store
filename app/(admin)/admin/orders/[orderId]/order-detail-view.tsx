@@ -71,6 +71,10 @@ const cardStatusMeta: Record<CardStatus, { label: string; className: string }> =
     label: "已售出",
     className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
   },
+  refunded: {
+    label: "已退款",
+    className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+  },
 };
 
 function SummaryCard({
@@ -659,7 +663,7 @@ export function OrderDetailView({ result }: { result: AdminOrderDetailResult }) 
       acc[card.status] += 1;
       return acc;
     },
-    { available: 0, locked: 0, sold: 0 }
+    { available: 0, locked: 0, sold: 0, refunded: 0 }
   );
 
   return (

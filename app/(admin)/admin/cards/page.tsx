@@ -172,6 +172,10 @@ const stockBadgeConfig: Record<CardStatus, { label: string; className: string }>
     label: "已售",
     className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
   },
+  refunded: {
+    label: "退款",
+    className: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200",
+  },
 };
 
 export default async function CardsPage({ searchParams }: CardsPageProps) {

@@ -4,7 +4,7 @@ import type { RefObject } from "react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, RotateCcw, Trash2 } from "lucide-react";
+import { Loader2, Package, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ import {
 import { LocalTime } from "@/components/time/local-time";
 
 import type { CardStatus } from "@/lib/db";
-import { deleteCards, resetLockedCards } from "@/lib/actions/cards";
+import { deleteCards, relistRefundedCards, resetLockedCards } from "@/lib/actions/cards";
 
 import { EditCardDialog } from "./edit-card-dialog";
 
@@ -54,6 +54,10 @@ const statusConfig: Record<CardStatus, { label: string; className: string }> = {
   sold: {
     label: "已售",
     className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+  },
+  refunded: {
+    label: "退款",
+    className: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200",
   },
 };
 
@@ -147,17 +151,21 @@ function CardsBulkActionBar({
   selectedCount,
   availableSelectedCount,
   lockedSelectedCount,
+  refundedSelectedCount,
   isPending,
   onDeleteSelected,
   onResetSelected,
+  onRelistSelected,
   onClearSelection,
 }: {
   selectedCount: number;
   availableSelectedCount: number;
   lockedSelectedCount: number;
+  refundedSelectedCount: number;
   isPending: boolean;
   onDeleteSelected: () => void;
   onResetSelected: () => void;
+  onRelistSelected: () => void;
   onClearSelection: () => void;
 }) {
   return (
@@ -166,13 +174,26 @@ function CardsBulkActionBar({
         {selectedCount > 0 ? (
           <span>
             已选择 <span className="font-medium text-foreground">{selectedCount}</span>{" "}
-            项（可用 {availableSelectedCount} · 锁定 {lockedSelectedCount}）
+            项（可用 {availableSelectedCount} · 锁定 {lockedSelectedCount} · 退款 {refundedSelectedCount}）
           </span>
         ) : (
-          <span>可勾选“可用/锁定”卡密进行批量操作</span>
+          <span>可勾选“可用/锁定/退款”卡密进行批量操作</span>
         )}
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isPending || refundedSelectedCount === 0}
+          onClick={onRelistSelected}
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Package className="h-4 w-4" />
+          )}
+          重新上架
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -267,6 +288,7 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
   const [isPending, startTransition] = useTransition();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
   const [resetIds, setResetIds] = useState<string[] | null>(null);
+  const [relistIds, setRelistIds] = useState<string[] | null>(null);
 
   const {
     selectedIds,
@@ -292,6 +314,10 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
     () => selectedOnPage.filter((c) => c.status === "locked").map((c) => c.id),
     [selectedOnPage]
   );
+  const refundedSelectedIds = useMemo(
+    () => selectedOnPage.filter((c) => c.status === "refunded").map((c) => c.id),
+    [selectedOnPage]
+  );
 
   const openDelete = (ids: string[]) => {
     if (ids.length === 0) return;
@@ -301,6 +327,11 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
   const openReset = (ids: string[]) => {
     if (ids.length === 0) return;
     setResetIds(ids);
+  };
+
+  const openRelist = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setRelistIds(ids);
   };
 
   const confirmDelete = () => {
@@ -343,6 +374,26 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
     });
   };
 
+  const confirmRelist = () => {
+    if (!relistIds || relistIds.length === 0) {
+      setRelistIds(null);
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await relistRefundedCards(relistIds);
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success(result.message);
+      setRelistIds(null);
+      // 为什么这样做：重新上架会清空订单关联并恢复可售状态，需要刷新以同步库存展示。
+      clearSelection();
+      router.refresh();
+    });
+  };
+
   return (
     <div className="space-y-3">
       <ConfirmDialog
@@ -367,13 +418,26 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
         onConfirm={confirmReset}
       />
 
+      <ConfirmDialog
+        open={Boolean(relistIds)}
+        onOpenChange={(open) => setRelistIds(open ? relistIds : null)}
+        title="确认重新上架"
+        description={`将重新上架 ${relistIds?.length ?? 0} 个退款卡密，恢复为可售状态。`}
+        confirmText="确认上架"
+        confirmVariant="default"
+        pending={isPending}
+        onConfirm={confirmRelist}
+      />
+
       <CardsBulkActionBar
         selectedCount={selection.selectedOnPageCount}
         availableSelectedCount={availableSelectedIds.length}
         lockedSelectedCount={lockedSelectedIds.length}
+        refundedSelectedCount={refundedSelectedIds.length}
         isPending={isPending}
         onDeleteSelected={() => openDelete(availableSelectedIds)}
         onResetSelected={() => openReset(lockedSelectedIds)}
+        onRelistSelected={() => openRelist(refundedSelectedIds)}
         onClearSelection={clearSelection}
       />
 
@@ -462,6 +526,18 @@ export function CardsTable({ items }: { items: AdminCardListItem[] }) {
                           disabled={isPending}
                         >
                           <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      {card.status === "refunded" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          title="重新上架"
+                          onClick={() => openRelist([card.id])}
+                          disabled={isPending}
+                        >
+                          <Package className="h-4 w-4" />
                         </Button>
                       ) : null}
                       {card.status === "available" && !card.orderId ? (
