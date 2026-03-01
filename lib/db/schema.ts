@@ -20,6 +20,7 @@ export const cardStatusEnum = pgEnum("card_status", [
   "available", // 可用
   "locked",    // 已锁定（待支付）
   "sold",      // 已售出
+  "refunded",  // 已退款
 ]);
 
 export const orderStatusEnum = pgEnum("order_status", [
